@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Security.Cryptography.X509Certificates;
 
 namespace CIE.AspNetCore.Authentication.Models
@@ -12,6 +15,12 @@ namespace CIE.AspNetCore.Authentication.Models
     public class CieOptions : RemoteAuthenticationOptions
     {
         private readonly List<ServiceProvider> _spMetadata = new();
+        private readonly CieMetadataCache _metadataCache = new();
+
+        public Task<Saml.IdP.EntityDescriptorType> GetIdentityProviderMetadata(IHttpClientFactory httpClientFactory, CancellationToken cancellationToken = default) =>
+            _metadataCache.GetAsync(httpClientFactory, IdentityProvider.OrganizationUrlMetadata, CacheIdpMetadata,
+                TimeProvider ?? System.TimeProvider.System, cancellationToken);
+
 
         public CieOptions()
         {

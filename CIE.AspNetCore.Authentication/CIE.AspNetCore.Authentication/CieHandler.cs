@@ -138,12 +138,12 @@ namespace CIE.AspNetCore.Authentication
         protected override async Task<HandleRequestResult> HandleRemoteAuthenticateAsync()
         {
             AuthenticationProperties properties = new AuthenticationProperties();
-            properties.Load(Request, Options.StateDataFormat);
-
-            (string id, ResponseType message, string serializedResponse) = await ExtractInfoFromAuthenticationResponse();
-
+            ResponseType message = null;
             try
             {
+                properties.Load(Request, Options.StateDataFormat);
+                (string id, ResponseType receivedMessage, string serializedResponse) = await ExtractInfoFromAuthenticationResponse();
+                message = receivedMessage;
                 var request = properties.GetAuthenticationRequest();
 
                 var responseMessageReceivedResult = await _eventsHandler.HandleAuthenticationResponseMessageReceived(Context, Scheme, Options, properties, message);
@@ -289,38 +289,10 @@ namespace CIE.AspNetCore.Authentication
                 return HandleRequestResult.Fail("Unsolicited logins are not allowed.");
             }
 
-            var idp = Options.IdentityProvider;
-
-            var metadataIdp = await DownloadMetadataIDP(idp.OrganizationUrlMetadata);
+            var metadataIdp = await Options.GetIdentityProviderMetadata(_httpClientFactory, Context.RequestAborted);
 
             response.ValidateAuthnResponse(request, metadataIdp, serializedResponse);
             return null;
-        }
-
-        private static readonly XmlSerializer entityDescriptorSerializer = new(typeof(Saml.IdP.EntityDescriptorType));
-        private static readonly ConcurrentDictionary<string, string> metadataCache = new ConcurrentDictionary<string, string>();
-        private async Task<Saml.IdP.EntityDescriptorType> DownloadMetadataIDP(string urlMetadataIdp)
-        {
-            string xml = null;
-            if (Options.CacheIdpMetadata
-                && metadataCache.ContainsKey(urlMetadataIdp))
-            {
-                xml = metadataCache[urlMetadataIdp];
-            }
-            if (string.IsNullOrWhiteSpace(xml))
-            {
-                using var httpClientHandler = new HttpClientHandler();
-                httpClientHandler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => { return true; };
-                using var client = new HttpClient(httpClientHandler);
-                xml = await client.GetStringAsync(urlMetadataIdp);
-            }
-            if (Options.CacheIdpMetadata
-                && !string.IsNullOrWhiteSpace(xml))
-            {
-                metadataCache.AddOrUpdate(urlMetadataIdp, xml, (x, y) => xml);
-            }
-            using var reader = new StringReader(xml);
-            return (Saml.IdP.EntityDescriptorType)entityDescriptorSerializer.Deserialize(reader);
         }
 
         private HandleRequestResult ValidateCorrelation(AuthenticationProperties properties)
@@ -388,9 +360,9 @@ namespace CIE.AspNetCore.Authentication
               && Request.ContentType.StartsWith("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase)
               && Request.Body.CanRead)
             {
-                var form = await Request.ReadFormAsync();
+                var form = await Request.ReadFormAsync(Context.RequestAborted);
 
-                var serializedResponse = Encoding.UTF8.GetString(Convert.FromBase64String(form["SAMLResponse"][0]));
+                var serializedResponse = SamlInput.DecodePost(form["SAMLResponse"].Single());
 
                 await _logHandler.LogPostResponse(new PostResponse()
                 {
@@ -405,7 +377,7 @@ namespace CIE.AspNetCore.Authentication
 
                 return (
                     form["RelayState"].ToString(),
-                    SamlHandler.GetAuthnResponse(form["SAMLResponse"][0]),
+                    SamlHandler.DeserializeMessage<ResponseType>(serializedResponse),
                     serializedResponse
                 );
             }
@@ -413,7 +385,7 @@ namespace CIE.AspNetCore.Authentication
                 && Request.Query.ContainsKey("SAMLResponse")
                 && Request.Query.ContainsKey("RelayState"))
             {
-                var serializedResponse = DecompressString(Request.Query["SAMLResponse"].FirstOrDefault());
+                var serializedResponse = SamlInput.DecodeRedirect(Request.Query["SAMLResponse"].Single());
 
                 await _logHandler.LogRedirectResponse(new RedirectResponse()
                 {
@@ -427,7 +399,7 @@ namespace CIE.AspNetCore.Authentication
 
                 return (
                     Request.Query["RelayState"].FirstOrDefault(),
-                    SamlHandler.GetAuthnResponse(serializedResponse),
+                    SamlHandler.DeserializeMessage<ResponseType>(serializedResponse),
                     serializedResponse
                 );
             }

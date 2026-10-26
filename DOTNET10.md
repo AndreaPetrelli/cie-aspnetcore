@@ -38,3 +38,26 @@ Il superamento dei test dell'applicazione non sostituisce il collaudo federato.
 
 Generazione XML, algoritmi di firma e verifica, dati richiesti e endpoint SAML
 restano quelli della libreria.
+
+
+## Download e lettura dei messaggi
+
+I download di metadata/registro usano il client nominato (`cie` o `spid`) di
+`IHttpClientFactory`, con verifica TLS standard, solo URL HTTPS senza credenziali,
+timeout massimo di 15 secondi e cancellazione della richiesta. Anche il corpo
+letto in streaming è limitato a 4 MiB, senza fidarsi del solo Content-Length.
+
+La cache è isolata per istanza di opzioni e URL: CIE scade dopo un'ora quando
+`CacheIdpMetadata` è attivo; SPID mantiene `IdpMetadataCacheDurationInMinutes`.
+Un errore nel rinnovo viene propagato, senza riutilizzare una cache
+scaduta o memorizzare la risposta fallita. SPID restituisce una nuova lista e non
+aggiunge i provider remoti alla collezione configurata. È disponibile anche
+l'overload cancellabile di `GetIdentityProviders`; quello esistente rimane.
+
+Le risposte di login POST/Redirect vengono limitate a 1 MiB decodificato, anche
+dopo DEFLATE, prima dei log e della deserializzazione. DTD e risorse XML esterne
+sono proibiti per questi ingressi e per i metadata XML CIE; l'XML valido viene
+conservato esattamente. I limiti sono attualmente costanti della libreria.
+
+Questa modifica non corregge la fiducia nelle firme del logout e non cambia
+algoritmi, firma dei metadata, politica delle chiavi private o tolleranze temporali.
