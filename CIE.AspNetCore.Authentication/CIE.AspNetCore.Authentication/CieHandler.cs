@@ -37,10 +37,9 @@ namespace CIE.AspNetCore.Authentication
         public CieHandler(IOptionsMonitor<CieOptions> options,
             ILoggerFactory logger,
             UrlEncoder encoder,
-            ISystemClock clock,
             IHttpClientFactory httpClientFactory,
             ILogHandler logHandler)
-            : base(options, logger, encoder, clock)
+            : base(options, logger, encoder)
         {
             _httpClientFactory = httpClientFactory;
             _logHandler = logHandler;

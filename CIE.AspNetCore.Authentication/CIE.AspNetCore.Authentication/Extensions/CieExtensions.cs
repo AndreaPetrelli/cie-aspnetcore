@@ -3,7 +3,10 @@ using CIE.AspNetCore.Authentication.Models;
 using CIE.AspNetCore.Authentication.Models.ServiceProviders;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,11 +57,14 @@ namespace CIE.AspNetCore.Authentication.Extensions
         public static AuthenticationBuilder AddCie(this AuthenticationBuilder builder, string authenticationScheme, string displayName, Action<CieOptions> configureOptions)
         {
             builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<CieOptions>, CiePostConfigureOptions>());
-            builder.Services.TryAdd(ServiceDescriptor.Singleton<IActionContextAccessor, ActionContextAccessor>());
+            builder.Services.AddHttpContextAccessor();
             builder.Services.AddHttpClient("cie");
             builder.Services.TryAddScoped(factory => {
-                var actionContext = factory.GetService<IActionContextAccessor>().ActionContext;
-                var urlHelperFactory = factory.GetService<IUrlHelperFactory>();
+                var context = factory.GetRequiredService<IHttpContextAccessor>().HttpContext
+                    ?? throw new InvalidOperationException("URL generation requires an active HTTP request.");
+                var action = context.GetEndpoint()?.Metadata.GetMetadata<ActionDescriptor>() ?? new ActionDescriptor();
+                var actionContext = new ActionContext(context, context.GetRouteData(), action);
+                var urlHelperFactory = factory.GetRequiredService<IUrlHelperFactory>();
                 return urlHelperFactory.GetUrlHelper(actionContext);
             });
             builder.Services.AddOptions<CieOptions>().Configure(configureOptions);

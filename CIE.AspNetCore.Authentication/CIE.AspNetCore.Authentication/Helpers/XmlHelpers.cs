@@ -1,4 +1,5 @@
-﻿using CIE.AspNetCore.Authentication.Resources;
+﻿#nullable enable annotations
+using CIE.AspNetCore.Authentication.Resources;
 using System;
 using System.Linq;
 using System.Security.Cryptography;
@@ -92,7 +93,8 @@ namespace CIE.AspNetCore.Authentication.Helpers
                                 var x509Cert = keyData.Items.FirstOrDefault(i => i is byte[]) as byte[];
                                 if (x509Cert is not null)
                                 {
-                                    validated |= VerifyAllSignatures(signedDocument, new X509Certificate2(x509Cert));
+                                    using var publicCertificate = X509CertificateLoader.LoadCertificate(x509Cert);
+                                    validated |= VerifyAllSignatures(signedDocument, publicCertificate);
                                 }
                             }
                         }

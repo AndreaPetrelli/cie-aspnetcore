@@ -20,9 +20,11 @@ namespace CIE.AspNetCore.Authentication.Helpers
             BusinessValidation.ValidationNotNullNotWhitespace(certFilePath, ErrorLocalization.CertificatePathNullOrEmpty);
             BusinessValidation.ValidationNotNullNotWhitespace(certPassword, ErrorLocalization.CertificatePasswordNullOrEmpty);
 
-            return new X509Certificate2(certFilePath, 
-                certPassword, 
-                X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable);
+            return X509Certificate2.GetCertContentType(certFilePath) == X509ContentType.Pkcs12
+                ? X509CertificateLoader.LoadPkcs12FromFile(certFilePath,
+                    certPassword,
+                    X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable)
+                : X509CertificateLoader.LoadCertificateFromFile(certFilePath);
         }
 
         /// <summary>
@@ -36,8 +38,10 @@ namespace CIE.AspNetCore.Authentication.Helpers
             BusinessValidation.ValidationNotNullNotWhitespace(certificateString64, ErrorLocalization.CertificateRawStringNullOrEmpty);
             BusinessValidation.ValidationNotNullNotWhitespace(certPassword, ErrorLocalization.CertificatePasswordNullOrEmpty);
             var certificateBytes = Convert.FromBase64String(certificateString64);
-            return new X509Certificate2(certificateBytes, certPassword,
-                            X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable);
+            return X509Certificate2.GetCertContentType(certificateBytes) == X509ContentType.Pkcs12
+                ? X509CertificateLoader.LoadPkcs12(certificateBytes, certPassword,
+                    X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable)
+                : X509CertificateLoader.LoadCertificate(certificateBytes);
         }
 
 

@@ -1,4 +1,5 @@
-﻿using CIE.AspNetCore.Authentication.Models;
+﻿#nullable enable annotations
+using CIE.AspNetCore.Authentication.Models;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Security.Cryptography.X509Certificates;

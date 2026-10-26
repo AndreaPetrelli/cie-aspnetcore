@@ -18,3 +18,23 @@ dotnet build CIE.AspNetCore.Authentication/CIE.AspNetCore.Authentication/CIE.Asp
 Questa modifica riguarda la libreria, non aggiorna i progetti di esempio upstream.
 Nomi e versioni degli assembly, risorse, generazione e firma SAML sono mantenuti.
 Il superamento dei test dell'applicazione non sostituisce il collaudo federato.
+
+
+## Compatibilità API .NET 10
+
+- Gli handler usano il costruttore moderno di `RemoteAuthenticationHandler`,
+  con il `TimeProvider` delle opzioni dello schema, senza `ISystemClock`.
+- La generazione degli URL usa `IHttpContextAccessor`, i dati di routing e il
+  descrittore dell'endpoint corrente. Una registrazione applicativa di
+  `IUrlHelper` conserva la precedenza.
+- I certificati PFX vengono letti con `X509CertificateLoader.LoadPkcs12*`;
+  i certificati pubblici con `LoadCertificate*`. Password richieste e flag
+  `MachineKeySet | PersistKeySet | Exportable` restano invariati. I certificati
+  pubblici usati nella verifica delle firme vengono rilasciati dopo la verifica.
+- Nei file che già usano annotazioni nullable viene abilitato il relativo
+  contesto, senza attivare globalmente nuovi controlli nullable.
+- Rimossi i confronti sempre falsi di `DateTime` con `null`; restano i controlli
+  esistenti sui valori minimi, gli intervalli temporali e la scadenza.
+
+Generazione XML, algoritmi di firma e verifica, dati richiesti e endpoint SAML
+restano quelli della libreria.
