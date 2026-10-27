@@ -22,5 +22,8 @@ namespace CIE.AspNetCore.Authentication.Events
         /// The signout message.
         /// </summary>
         public LogoutResponseType ProtocolMessage { get; set; }
+
+        // Set only after the response signature and correlation have been validated.
+        public bool LogoutSucceeded { get; internal set; }
     }
 }

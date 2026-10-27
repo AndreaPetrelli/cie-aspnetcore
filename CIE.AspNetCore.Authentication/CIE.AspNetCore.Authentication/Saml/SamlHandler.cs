@@ -17,6 +17,7 @@ namespace CIE.AspNetCore.Authentication.Saml
         private static readonly Dictionary<Type, XmlSerializer> serializers = new Dictionary<Type, XmlSerializer>
         {
             { typeof(AuthnRequestType), new XmlSerializer(typeof(AuthnRequestType)) },
+            { typeof(NameIDType), new XmlSerializer(typeof(NameIDType)) },
             { typeof(ResponseType), new XmlSerializer(typeof(ResponseType)) },
             { typeof(LogoutRequestType), new XmlSerializer(typeof(LogoutRequestType)) },
             { typeof(LogoutResponseType), new XmlSerializer(typeof(LogoutResponseType)) },
@@ -377,7 +378,7 @@ namespace CIE.AspNetCore.Authentication.Saml
         /// <param name="authnStatementSessionIndex"></param>
         /// <returns></returns>
         public static LogoutRequestType GetLogoutRequest(string requestId, string consumerServiceURL, X509Certificate2 certificate,
-           IdentityProvider identityProvider, string subjectNameId, string authnStatementSessionIndex,
+           IdentityProvider identityProvider, NameIDType subjectNameId, string authnStatementSessionIndex,
             RequestMethod requestMethod)
         {
 
@@ -403,7 +404,6 @@ namespace CIE.AspNetCore.Authentication.Saml
             }
 
             string dateTimeFormat = identityProvider.DateTimeFormat;
-            string subjectNameIdRemoveText = identityProvider.SubjectNameIdRemoveText;
             string singleLogoutServiceUrl = identityProvider.GetSingleSignOutServiceUrl(requestMethod);
 
             DateTime now = DateTime.UtcNow;
@@ -422,9 +422,11 @@ namespace CIE.AspNetCore.Authentication.Saml
                 },
                 Item = new NameIDType
                 {
-                    NameQualifier = consumerServiceURL,
-                    Format = SamlConst.NameIDPolicyFormat,
-                    Value = subjectNameIdRemoveText == null ? subjectNameId : subjectNameId.Replace(subjectNameIdRemoveText, String.Empty)
+                    NameQualifier = subjectNameId.NameQualifier,
+                    SPNameQualifier = subjectNameId.SPNameQualifier,
+                    SPProvidedID = subjectNameId.SPProvidedID,
+                    Format = subjectNameId.Format,
+                    Value = subjectNameId.Value
                 },
                 NotOnOrAfterSpecified = true,
                 NotOnOrAfter = now.AddMinutes(ClockSkewInMinutes),
@@ -456,22 +458,6 @@ namespace CIE.AspNetCore.Authentication.Saml
             {
                 throw new Exception(ErrorLocalization.ResponseNotValid, ex);
             }
-        }
-
-        /// <summary>
-        /// Check the validity of IdP logout response
-        /// </summary>
-        /// <param name="response"></param>
-        /// <param name="request"></param>
-        /// <returns>True if valid, false otherwise</returns>
-        public static bool ValidateLogoutResponse(LogoutResponseType response, LogoutRequestType request, string serializedResponse)
-        {
-            var xmlDoc = new XmlDocument() { PreserveWhitespace = true };
-            xmlDoc.LoadXml(serializedResponse);
-
-            BusinessValidation.ValidationCondition(() => !XmlHelpers.VerifySignature(xmlDoc), ErrorLocalization.InvalidSignature);
-
-            return (response.InResponseTo == request.ID);
         }
 
         public static string SerializeMetadata<T>(T message) where T : class

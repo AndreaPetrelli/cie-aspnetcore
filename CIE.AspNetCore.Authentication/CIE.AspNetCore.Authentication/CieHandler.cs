@@ -168,8 +168,9 @@ namespace CIE.AspNetCore.Authentication
 
                 AdjustAuthenticationPropertiesDates(properties, validFrom, validTo);
 
-                properties.SetSubjectNameId(message.GetAssertion().Subject?.GetNameID()?.Value);
+                properties.SetSubjectNameIdentifier(message.GetAssertion().Subject.GetNameID());
                 properties.SetSessionIndex(message.GetAssertion().GetAuthnStatement().SessionIndex);
+                properties.Items.Remove("AuthenticationRequest");
                 properties.Save(Response, Options.StateDataFormat);
 
                 var ticket = new AuthenticationTicket(principal, properties, Scheme.Name);
@@ -200,7 +201,7 @@ namespace CIE.AspNetCore.Authentication
             properties.Load(Request, Options.StateDataFormat);
 
             // Extract the user state from properties and reset.
-            var subjectNameId = properties.GetSubjectNameId();
+            var subjectNameId = properties.GetSubjectNameIdentifier();
             var sessionIndex = properties.GetSessionIndex();
 
             var idp = Options.IdentityProvider;
@@ -246,11 +247,25 @@ namespace CIE.AspNetCore.Authentication
 
             var logoutRequest = requestProperties.GetLogoutRequest();
 
-            var validSignOut = ValidateSignOutResponse(message, logoutRequest, serializedResponse);
-            if (!validSignOut)
-                return false;
-
-            var remoteSignOutContext = await _eventsHandler.HandleRemoteSignOut(Context, Scheme, Options, message);
+            // Authenticate negative responses too; KeyInfo supplied by the sender is not a trust anchor.
+            var metadata = await Options.GetIdentityProviderMetadata(_httpClientFactory, Context.RequestAborted);
+            var xml = new System.Xml.XmlDocument { PreserveWhitespace = true };
+            using (var reader = SamlInput.CreateXmlReader(serializedResponse, SamlInput.MaxMessageBytes)) xml.Load(reader);
+            var expectedDestination = Request.Scheme + "://" + Request.Host + Request.PathBase + Options.RemoteSignOutPath;
+            if (message == null || message.InResponseTo != logoutRequest.ID || message.Destination != expectedDestination
+                || message.Issuer?.Value != metadata.entityID || message.Version != "2.0"
+                || message.IssueInstant == default || (DateTime.UtcNow - message.IssueInstant.ToUniversalTime()).Duration() > TimeSpan.FromMinutes(10)
+                || !XmlHelpers.VerifySignature(xml, metadata))
+                throw new AuthenticationFailureException("Invalid CIE logout response.");
+            var signatures = xml.GetElementsByTagName("Signature", System.Security.Cryptography.Xml.SignedXml.XmlDsigNamespaceUrl);
+            if (signatures.Count != 1 || signatures[0].ParentNode != xml.DocumentElement)
+                throw new AuthenticationFailureException("Invalid CIE logout signature structure.");
+            var signed = new System.Security.Cryptography.Xml.SignedXml(xml);
+            signed.LoadXml((System.Xml.XmlElement)signatures[0]);
+            if (signed.SignedInfo.References.Count != 1 || ((System.Security.Cryptography.Xml.Reference)signed.SignedInfo.References[0]).Uri != "#" + message.ID)
+                throw new AuthenticationFailureException("Invalid CIE logout signature reference.");
+            var succeeded = message.Status?.StatusCode?.Value == SamlConst.Success;
+            var remoteSignOutContext = await _eventsHandler.HandleRemoteSignOut(Context, Scheme, Options, message, requestProperties, succeeded);
             if (remoteSignOutContext.Result != null)
             {
                 if (remoteSignOutContext.Result.Handled)
@@ -264,6 +279,9 @@ namespace CIE.AspNetCore.Authentication
                     return false;
                 }
             }
+
+            if (!succeeded)
+                throw new AuthenticationFailureException("CIE did not confirm remote logout.");
 
             Logger.RemoteSignOut();
 
@@ -463,18 +481,6 @@ namespace CIE.AspNetCore.Authentication
             return reader.ReadToEnd();
         }
 
-        private bool ValidateSignOutResponse(LogoutResponseType response, LogoutRequestType request, string serializedResponse)
-        {
-            var valid = response.Status.StatusCode.Value == SamlConst.Success && SamlHandler.ValidateLogoutResponse(response, request, serializedResponse);
-            if (valid)
-            {
-                return true;
-            }
-
-            Logger.RemoteSignOutFailed();
-            return false;
-        }
-
         private class EventsHandler
         {
             private readonly CieEvents _events;
@@ -538,9 +544,13 @@ namespace CIE.AspNetCore.Authentication
                 return authenticationFailedContext;
             }
 
-            public async Task<RemoteSignOutContext> HandleRemoteSignOut(HttpContext context, AuthenticationScheme scheme, CieOptions options, LogoutResponseType message)
+            public async Task<RemoteSignOutContext> HandleRemoteSignOut(HttpContext context, AuthenticationScheme scheme, CieOptions options, LogoutResponseType message, AuthenticationProperties properties, bool succeeded)
             {
-                var remoteSignOutContext = new RemoteSignOutContext(context, scheme, options, message);
+                var remoteSignOutContext = new RemoteSignOutContext(context, scheme, options, message)
+                {
+                    Properties = properties,
+                    LogoutSucceeded = succeeded
+                };
                 await _events.RemoteSignOut(remoteSignOutContext);
                 return remoteSignOutContext;
             }
@@ -683,6 +693,19 @@ namespace CIE.AspNetCore.Authentication
             properties.Items["LogoutRequest"] = SamlHandler.SerializeMessage(request);
         public static LogoutRequestType GetLogoutRequest(this AuthenticationProperties properties) =>
             SamlHandler.DeserializeMessage<LogoutRequestType>(properties.Items["LogoutRequest"]);
+
+        public static void SetSubjectNameIdentifier(this AuthenticationProperties properties, NameIDType subject)
+        {
+            properties.Items["subjectNameId"] = subject.Value;
+            properties.Items["subjectNameIdXml"] = SamlHandler.SerializeMessage(subject);
+        }
+
+        public static NameIDType GetSubjectNameIdentifier(this AuthenticationProperties properties)
+        {
+            if (!properties.Items.TryGetValue("subjectNameIdXml", out var serialized) || string.IsNullOrEmpty(serialized))
+                throw new AuthenticationFailureException("A new CIE login is required before federated logout.");
+            return SamlHandler.DeserializeMessage<NameIDType>(serialized);
+        }
 
         public static void SetSubjectNameId(this AuthenticationProperties properties, string subjectNameId) => properties.Items["subjectNameId"] = subjectNameId;
         public static string GetSubjectNameId(this AuthenticationProperties properties) => properties.Items["subjectNameId"];

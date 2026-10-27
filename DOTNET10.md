@@ -59,5 +59,23 @@ dopo DEFLATE, prima dei log e della deserializzazione. DTD e risorse XML esterne
 sono proibiti per questi ingressi e per i metadata XML CIE; l'XML valido viene
 conservato esattamente. I limiti sono attualmente costanti della libreria.
 
-Questa modifica non corregge la fiducia nelle firme del logout e non cambia
-algoritmi, firma dei metadata, politica delle chiavi private o tolleranze temporali.
+La modifica iniziale del download non interveniva sul logout. Il successivo
+intervento è descritto sotto; algoritmi e firma dei metadata rimangono invariati.
+
+
+## Logout
+
+Il NameID completo viene serializzato nello stato protetto dopo il login e
+riutilizzato nel LogoutRequest con il SessionIndex originale. Non viene più
+ricostruito usando EntityId come NameQualifier. Lo stato AuthnRequest non più
+necessario viene rimosso dopo la verifica del login. È necessario un nuovo login
+per aggiornare le sessioni precedenti.
+
+La LogoutResponse, anche negativa, è verificata contro le chiavi dei metadata
+IdP. Sono richiesti firma unica sull'intera radice, riferimento all'ID della
+risposta, InResponseTo correlato, issuer/destinazione/versione attesi e timestamp
+entro dieci minuti. La verifica che si fidava del solo KeyInfo non è più presente.
+`RemoteSignOutContext` espone Properties e LogoutSucceeded per permettere
+all'host di completare il proprio flusso anche con un rifiuto autenticato. Senza
+un gestore dell'evento, l'esito negativo produce AuthenticationFailureException
+anziché lasciare il callback alla ricerca di una route (404).
