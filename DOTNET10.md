@@ -44,7 +44,7 @@ restano quelli della libreria.
 
 I download di metadata/registro usano il client nominato (`cie` o `spid`) di
 `IHttpClientFactory`, con verifica TLS standard, solo URL HTTPS senza credenziali,
-timeout massimo di 15 secondi e cancellazione della richiesta. Anche il corpo
+timeout massimo di 100 secondi per CIE e cancellazione della richiesta. Anche il corpo
 letto in streaming è limitato a 4 MiB, senza fidarsi del solo Content-Length.
 
 La cache è isolata per istanza di opzioni e URL: CIE scade dopo un'ora quando

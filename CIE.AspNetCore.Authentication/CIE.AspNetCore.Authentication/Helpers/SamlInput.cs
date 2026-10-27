@@ -59,7 +59,7 @@ namespace CIE.AspNetCore.Authentication.Helpers
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo))
                 throw new InvalidOperationException("Identity provider metadata requires an HTTPS URL without user information.");
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            timeout.CancelAfter(TimeSpan.FromSeconds(100));
             using var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             if (response.RequestMessage?.RequestUri is Uri finalUri && finalUri.Scheme != Uri.UriSchemeHttps)
