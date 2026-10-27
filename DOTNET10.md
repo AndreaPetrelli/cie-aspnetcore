@@ -68,14 +68,28 @@ intervento è descritto sotto; algoritmi e firma dei metadata rimangono invariat
 Il NameID completo viene serializzato nello stato protetto dopo il login e
 riutilizzato nel LogoutRequest con il SessionIndex originale. Non viene più
 ricostruito usando EntityId come NameQualifier. Lo stato AuthnRequest non più
-necessario viene rimosso dopo la verifica del login. È necessario un nuovo login
-per aggiornare le sessioni precedenti.
+necessario viene rimosso dopo la verifica del login. Serve un nuovo login per le
+sessioni create prima della conservazione del NameID completo; la successiva
+semplificazione dell'evento non cambia il formato dello stato protetto.
 
 La LogoutResponse, anche negativa, è verificata contro le chiavi dei metadata
 IdP. Sono richiesti firma unica sull'intera radice, riferimento all'ID della
 risposta, InResponseTo correlato, issuer/destinazione/versione attesi e timestamp
 entro dieci minuti. La verifica che si fidava del solo KeyInfo non è più presente.
-`RemoteSignOutContext` espone Properties e LogoutSucceeded per permettere
-all'host di completare il proprio flusso anche con un rifiuto autenticato. Senza
-un gestore dell'evento, l'esito negativo produce AuthenticationFailureException
-anziché lasciare il callback alla ricerca di una route (404).
+L'evento `RemoteSignOutContext` espone `LogoutSucceeded`, impostato dal middleware
+solo dopo la validazione della risposta eseguita in un metodo privato. L'host usa
+il flag senza interpretare stringhe di stato SAML. Non vengono propagate le
+proprietà di ritorno. Senza un gestore dell'evento, l'esito negativo produce
+AuthenticationFailureException anziché lasciare il callback alla ricerca di
+una route (404).
+
+Il protocollo di invio resta quello della libreria: LogoutRequest firmata e
+binding configurato. La prova in preproduzione del 27 ottobre 2026 ha mostrato
+la conferma di logout sul server CIE dopo una richiesta POST, senza una successiva
+LogoutResponse. Il percorso può quindi terminare presso l'IdP: il middleware
+non attende attivamente un callback per chiudere la sessione locale. I test delle
+risposte positive e negative simulano eventuali callback, non il normale ritorno
+atteso dalla pagina CIE. La documentazione ufficiale ammette richieste SAML di
+logout pur descrivendo un Simple Logout senza risposta SAML; non si deduce una
+incompatibilità dell'intera libreria. Il precedente UnknownPrincipal non ha una
+causa isolata da una prova comparativa.

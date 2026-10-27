@@ -247,25 +247,9 @@ namespace CIE.AspNetCore.Authentication
 
             var logoutRequest = requestProperties.GetLogoutRequest();
 
-            // Authenticate negative responses too; KeyInfo supplied by the sender is not a trust anchor.
-            var metadata = await Options.GetIdentityProviderMetadata(_httpClientFactory, Context.RequestAborted);
-            var xml = new System.Xml.XmlDocument { PreserveWhitespace = true };
-            using (var reader = SamlInput.CreateXmlReader(serializedResponse, SamlInput.MaxMessageBytes)) xml.Load(reader);
-            var expectedDestination = Request.Scheme + "://" + Request.Host + Request.PathBase + Options.RemoteSignOutPath;
-            if (message == null || message.InResponseTo != logoutRequest.ID || message.Destination != expectedDestination
-                || message.Issuer?.Value != metadata.entityID || message.Version != "2.0"
-                || message.IssueInstant == default || (DateTime.UtcNow - message.IssueInstant.ToUniversalTime()).Duration() > TimeSpan.FromMinutes(10)
-                || !XmlHelpers.VerifySignature(xml, metadata))
-                throw new AuthenticationFailureException("Invalid CIE logout response.");
-            var signatures = xml.GetElementsByTagName("Signature", System.Security.Cryptography.Xml.SignedXml.XmlDsigNamespaceUrl);
-            if (signatures.Count != 1 || signatures[0].ParentNode != xml.DocumentElement)
-                throw new AuthenticationFailureException("Invalid CIE logout signature structure.");
-            var signed = new System.Security.Cryptography.Xml.SignedXml(xml);
-            signed.LoadXml((System.Xml.XmlElement)signatures[0]);
-            if (signed.SignedInfo.References.Count != 1 || ((System.Security.Cryptography.Xml.Reference)signed.SignedInfo.References[0]).Uri != "#" + message.ID)
-                throw new AuthenticationFailureException("Invalid CIE logout signature reference.");
+            await ValidateSignOutResponseAsync(message, logoutRequest, serializedResponse);
             var succeeded = message.Status?.StatusCode?.Value == SamlConst.Success;
-            var remoteSignOutContext = await _eventsHandler.HandleRemoteSignOut(Context, Scheme, Options, message, requestProperties, succeeded);
+            var remoteSignOutContext = await _eventsHandler.HandleRemoteSignOut(Context, Scheme, Options, message, succeeded);
             if (remoteSignOutContext.Result != null)
             {
                 if (remoteSignOutContext.Result.Handled)
@@ -288,6 +272,27 @@ namespace CIE.AspNetCore.Authentication
             await Context.SignOutAsync(Options.SignOutScheme);
             Response.Redirect(requestProperties.RedirectUri);
             return true;
+        }
+
+        private async Task ValidateSignOutResponseAsync(LogoutResponseType message, LogoutRequestType logoutRequest, string serializedResponse)
+        {
+            // Authenticate negative responses too; KeyInfo supplied by the sender is not a trust anchor.
+            var metadata = await Options.GetIdentityProviderMetadata(_httpClientFactory, Context.RequestAborted);
+            var xml = new System.Xml.XmlDocument { PreserveWhitespace = true };
+            using (var reader = SamlInput.CreateXmlReader(serializedResponse, SamlInput.MaxMessageBytes)) xml.Load(reader);
+            var expectedDestination = Request.Scheme + "://" + Request.Host + Request.PathBase + Options.RemoteSignOutPath;
+            if (message == null || message.InResponseTo != logoutRequest.ID || message.Destination != expectedDestination
+                || message.Issuer?.Value != metadata.entityID || message.Version != "2.0"
+                || message.IssueInstant == default || (DateTime.UtcNow - message.IssueInstant.ToUniversalTime()).Duration() > TimeSpan.FromMinutes(10)
+                || !XmlHelpers.VerifySignature(xml, metadata))
+                throw new AuthenticationFailureException("Invalid CIE logout response.");
+            var signatures = xml.GetElementsByTagName("Signature", System.Security.Cryptography.Xml.SignedXml.XmlDsigNamespaceUrl);
+            if (signatures.Count != 1 || signatures[0].ParentNode != xml.DocumentElement)
+                throw new AuthenticationFailureException("Invalid CIE logout signature structure.");
+            var signed = new System.Security.Cryptography.Xml.SignedXml(xml);
+            signed.LoadXml((System.Xml.XmlElement)signatures[0]);
+            if (signed.SignedInfo.References.Count != 1 || ((System.Security.Cryptography.Xml.Reference)signed.SignedInfo.References[0]).Uri != "#" + message.ID)
+                throw new AuthenticationFailureException("Invalid CIE logout signature reference.");
         }
 
         private async Task<HandleRequestResult> ValidateAuthenticationResponse(ResponseType response, AuthnRequestType request, AuthenticationProperties properties, string serializedResponse)
@@ -544,11 +549,10 @@ namespace CIE.AspNetCore.Authentication
                 return authenticationFailedContext;
             }
 
-            public async Task<RemoteSignOutContext> HandleRemoteSignOut(HttpContext context, AuthenticationScheme scheme, CieOptions options, LogoutResponseType message, AuthenticationProperties properties, bool succeeded)
+            public async Task<RemoteSignOutContext> HandleRemoteSignOut(HttpContext context, AuthenticationScheme scheme, CieOptions options, LogoutResponseType message, bool succeeded)
             {
                 var remoteSignOutContext = new RemoteSignOutContext(context, scheme, options, message)
                 {
-                    Properties = properties,
                     LogoutSucceeded = succeeded
                 };
                 await _events.RemoteSignOut(remoteSignOutContext);
