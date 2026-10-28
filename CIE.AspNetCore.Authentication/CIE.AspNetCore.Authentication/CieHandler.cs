@@ -361,14 +361,16 @@ namespace CIE.AspNetCore.Authentication
 
         private (ClaimsPrincipal principal, DateTimeOffset? validFrom, DateTimeOffset? validTo) CreatePrincipal(ResponseType idpAuthnResponse)
         {
-            var claims = new Claim[]
+            var claims = new List<Claim>
             {
-                new Claim( ClaimTypes.NameIdentifier, idpAuthnResponse.GetAssertion().GetAttributeStatement().GetAttributes().FirstOrDefault(x => SamlConst.fiscalNumber.Equals(x.Name) || SamlConst.fiscalNumber.Equals(x.FriendlyName))?.GetAttributeValue()?.Trim()?.Replace("TINIT-", "") ?? string.Empty),
                 new Claim( CieClaimTypes.Name.Value, GetAttributeValue(idpAuthnResponse, SamlConst.name)),
                 new Claim( CieClaimTypes.FamilyName.Value, GetAttributeValue(idpAuthnResponse, SamlConst.familyName)),
                 new Claim( CieClaimTypes.FiscalNumber.Value, RemoveFiscalNumberPrefix(GetAttributeValue(idpAuthnResponse, SamlConst.fiscalNumber))),
+                new Claim( CieClaimTypes.RawFiscalNumber.Value, GetAttributeValue(idpAuthnResponse, SamlConst.fiscalNumber)),
                 new Claim( CieClaimTypes.DateOfBirth.Value, GetAttributeValue(idpAuthnResponse, SamlConst.dateOfBirth)),
             };
+            claims.Add(new Claim(ClaimTypes.NameIdentifier,
+                claims.FirstOrDefault(c => c.Type == Options.PrincipalNameClaimType.Value)?.Value ?? string.Empty));
             var identity = new ClaimsIdentity(claims, Scheme.Name, Options.PrincipalNameClaimType.Value, null);
 
             var returnedPrincipal = new ClaimsPrincipal(identity);
