@@ -106,6 +106,9 @@ namespace CIE.AspNetCore.Authentication.Models.ServiceProviders
 
     public class PrivateContactPerson : BaseContactPerson
     {
+        public string IPACode { get; set; }
+        public string IPACategory { get; set; }
+
         public override ContactKind GetContactKind()
         {
             return ContactKind.Private;
@@ -126,7 +129,19 @@ namespace CIE.AspNetCore.Authentication.Models.ServiceProviders
         public override (List<ItemsChoiceType7>, List<string>) GetSpecificElements()
         {
 
-            return (new List<ItemsChoiceType7>(), new List<string>());
+            var elements = new List<ItemsChoiceType7>();
+            var values = new List<string>();
+            if (!string.IsNullOrWhiteSpace(IPACode))
+            {
+                elements.Add(ItemsChoiceType7.IPACode);
+                values.Add(IPACode);
+            }
+            if (!string.IsNullOrWhiteSpace(IPACategory))
+            {
+                elements.Add(ItemsChoiceType7.IPACategory);
+                values.Add(IPACategory);
+            }
+            return (elements, values);
         }
     }
 
