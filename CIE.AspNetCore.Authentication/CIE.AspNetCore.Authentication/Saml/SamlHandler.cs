@@ -1,4 +1,5 @@
-﻿using CIE.AspNetCore.Authentication.Helpers;
+﻿using CIE.AspNetCore.Authentication.Exceptions;
+using CIE.AspNetCore.Authentication.Helpers;
 using CIE.AspNetCore.Authentication.Models;
 using CIE.AspNetCore.Authentication.Resources;
 using System;
@@ -210,15 +211,15 @@ namespace CIE.AspNetCore.Authentication.Saml
                     switch (errorCode)
                     {
                         case 21:
-                            throw new Exception(ErrorLocalization._21);
+                            throw new CieException(errorCode, ErrorLocalization._21);
                         case 22:
-                            throw new Exception(ErrorLocalization._22);
+                            throw new CieException(errorCode, ErrorLocalization._22);
                         case 23:
-                            throw new Exception(ErrorLocalization._23);
+                            throw new CieException(errorCode, ErrorLocalization._23);
                         case 25:
-                            throw new Exception(ErrorLocalization._25);
+                            throw new CieException(errorCode, ErrorLocalization._25);
                         default:
-                            break;
+                            throw new CieException(errorCode, ErrorLocalization.StatusCodeNotValid);
                     }
                 }
                 throw new Exception(ErrorLocalization.StatusCodeNotValid);
