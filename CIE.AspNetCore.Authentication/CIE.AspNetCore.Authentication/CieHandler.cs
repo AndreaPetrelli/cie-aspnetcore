@@ -5,6 +5,7 @@ using CIE.AspNetCore.Authentication.Models;
 using CIE.AspNetCore.Authentication.Resources;
 using CIE.AspNetCore.Authentication.Saml;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.Logging;
@@ -198,7 +199,12 @@ namespace CIE.AspNetCore.Authentication
             string authenticationRequestId = Guid.NewGuid().ToString();
 
             properties ??= new();
-            properties.Load(Request, Options.StateDataFormat);
+            // Only application code can supply this typed parameter. Never bind it from query/form.
+            if (properties.Parameters.TryGetValue(CieLogoutContext.ParameterName, out var snapshot)
+                && snapshot is CieLogoutContext logoutContext)
+                logoutContext.Apply(properties);
+            else
+                properties.Load(Request, Options.StateDataFormat);
 
             // Extract the user state from properties and reset.
             var subjectNameId = properties.GetSubjectNameIdentifier();
@@ -724,7 +730,7 @@ namespace CIE.AspNetCore.Authentication
 
         public static void Save(this AuthenticationProperties properties, HttpResponse response, ISecureDataFormat<AuthenticationProperties> encryptor)
         {
-            response.Cookies.Append(CieDefaults.CookieName, encryptor.Protect(properties), new CookieOptions()
+            new ChunkingCookieManager().AppendResponseCookie(response.HttpContext, CieDefaults.CookieName, encryptor.Protect(properties), new CookieOptions()
             {
                 SameSite = SameSiteMode.None,
                 Secure = true
@@ -734,7 +740,8 @@ namespace CIE.AspNetCore.Authentication
         public static void Load(this AuthenticationProperties properties, HttpRequest request, ISecureDataFormat<AuthenticationProperties> encryptor)
         {
             BusinessValidation.ValidationCondition(() => !request.Cookies.ContainsKey(CieDefaults.CookieName), ErrorLocalization.CiePropertiesNotFound);
-            var cookie = request.Cookies[CieDefaults.CookieName];
+            var cookie = new ChunkingCookieManager { ThrowForPartialCookies = false }
+                .GetRequestCookie(request.HttpContext, CieDefaults.CookieName);
             BusinessValidation.ValidationNotNull(cookie, ErrorLocalization.CiePropertiesNotFound);
             AuthenticationProperties cookieProperties = encryptor.Unprotect(cookie);
             BusinessValidation.ValidationNotNull(cookieProperties, ErrorLocalization.CiePropertiesNotFound);
